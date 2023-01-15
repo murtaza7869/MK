@@ -1,2 +1,2 @@
 Set-ExecutionPolicy Unrestricted -Force
-winget install wireshark -h --accept-package-agreements --force --scope machine
+Start-Process winget -ArgumentLis 'install wireshark -h --accept-package-agreements --force --scope machine'
