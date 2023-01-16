@@ -1,0 +1,1 @@
+powershell -Command "& $([scriptblock]::Create((New-Object Net.WebClient).DownloadString('https://platform.activestate.com/dl/cli/_pdli01/install.ps1')))" -c'state activate --default mtk7869/ActivePerl-5.28'
