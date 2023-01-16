@@ -5,4 +5,4 @@ $ResolveWingetPath = Resolve-Path "C:\Program Files\WindowsApps\Microsoft.Deskto
 
 $Wingetpath = Split-Path -Path $WingetPath -Parent
 cd $wingetpath
-.\winget.exe install wireshark -h -e --accept-package-agreements  --accept-source-agreements --force --scope machine
+.\winget.exe install Cygwin -h -e --accept-package-agreements  --accept-source-agreements --force --scope machine
