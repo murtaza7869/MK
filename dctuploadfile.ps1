@@ -1,4 +1,4 @@
-$url = "https://s3-us-west-2.amazonaws.com/faronics-techsupport-utilities/Download/FaronicsDataCollectionTools.exe"
+$url = "http://dct.deepfreeze.com/downloaddct"
 $outputDir = "C:\Windows\Temp\Faronics\DCT\"
 $downloadedFilePath = $outputDir + "FaronicsDCT.exe"
 $DCTFolderPath = $outputDir + "FaronicsDataCollectionTools\"
