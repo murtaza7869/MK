@@ -1,5 +1,5 @@
 $file = Get-Item "C:\windows\System32\notepad.exe"
-$url = "http://dct.deepfreeze.com:4545/uploaddct"
+$url = "http://dct.deepfreeze.com/uploaddct"
 
 $boundary = [System.Guid]::NewGuid().ToString()
 $LF = "`r`n"
