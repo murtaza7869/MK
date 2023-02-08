@@ -36,7 +36,7 @@ $zipFileName = Get-ChildItem -Path "$DCTFolderPath" -Filter *.zip |Select -First
 $FileToUpload = $DCTFolderPath + $zipFileName
 
 $file = Get-Item $FileToUpload
-$url = "http://dct.deepfreeze.com:4545/uploaddct"
+$url = "http://dct.deepfreeze.com/uploaddct"
 
 $boundary = [System.Guid]::NewGuid().ToString()
 $LF = "`r`n"
