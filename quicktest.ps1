@@ -1,4 +1,4 @@
-$file = Get-Item "C:\windows\System32\notepad.exe"
+$file = Get-Item "C:\DFInstall.log"
 $url = "http://dct.deepfreeze.com/uploaddct"
 
 $boundary = [System.Guid]::NewGuid().ToString()
