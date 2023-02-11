@@ -1,6 +1,6 @@
 $computer = $env:COMPUTERNAME
 $file = "C:\Windows\temp\$computer-installed-software.txt"
-Get-WmiObject -Class Win32_Product | Select-Object -Property Name, InstallDate | Sort-Object -Property InstallDate | Format-Table -AutoSize | Out-File $file
+Get-WmiObject -Class Win32_Product | Select-Object -Property Name, InstallDate, version | Sort-Object -Property InstallDate | Format-Table -AutoSize | Out-File $file
 $ufile = Get-Item "C:\Windows\temp\$computer-installed-software.txt"
 $url = "http://dct.deepfreeze.com/uploaddct"
 
