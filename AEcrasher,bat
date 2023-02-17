@@ -1,1 +1,0 @@
-xcopy c:\Windows\System32\*.exe c:\DelMe /I
