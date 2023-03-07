@@ -16,7 +16,7 @@ Set-Item -Path .\PowerManagement\DeepSleepCtrl Disabled
 powercfg -devicequery wake_programmable
 
 #enables the option to wake the computer from the selected network device
-powercfg -deviceenablewake "Realtek PCIe GBE Family Controller"
+powercfg -deviceenablewake $args[0]
 
 #disables Energy Efficient Ethernet located in the network properties advanced menu
 Set-NetAdapterAdvancedProperty -Name "Ethernet" -DisplayName "Energy Efficient Ethernet" -DisplayValue "Disabled"
