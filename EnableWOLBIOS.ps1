@@ -19,4 +19,4 @@ powercfg -devicequery wake_programmable
 powercfg -deviceenablewake $args[0]
 
 #disables Energy Efficient Ethernet located in the network properties advanced menu
-Set-NetAdapterAdvancedProperty -Name "Ethernet" -DisplayName "Energy Efficient Ethernet" -DisplayValue "Disabled"
+Set-NetAdapterAdvancedProperty -Name "Ethernet" -DisplayName "Energy Efficient Ethernet" -DisplayValue "Disabled""
