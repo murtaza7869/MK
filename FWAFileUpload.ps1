@@ -6,9 +6,12 @@ If (Test-Path $outputDir) {
 }
 
 mkdir "$outputDir" | out-null
+#stopping CLoud agent
+stop-service -name "fwasvc"
 
 # Create ZIP file from FWA's storage space folder
 Compress-Archive -Path C:\ProgramData\Faronics\StorageSpace\FWA "$FWA_SS_ZipFilePath"
+start-service -name "fwasvc"
 
 $FileToUpload = "$FWA_SS_ZipFilePath"
 
@@ -40,3 +43,4 @@ $responseText = $responseReader.ReadToEnd()
 $response.Close()
 
 Write-Output $responseText
+
