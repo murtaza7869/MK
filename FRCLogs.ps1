@@ -1,5 +1,5 @@
 $outputDir = "C:\Windows\Temp\Faronics\"
-$FWA_SS_ZipFilePath = $outputDir + "FRC_SS_$env:computername.zip"
+$FWA_SS_ZipFilePath = $outputDir + "IMG_SS_$env:computername.zip"
 
 If (Test-Path $outputDir) {
     rm -r "$outputDir" | out-null
@@ -10,7 +10,7 @@ mkdir "$outputDir" | out-null
 #stop-service -name "fwasvc"
 
 # Create ZIP file from FWA's storage space folder
-Compress-Archive -Path C:\ProgramData\Faronics\StorageSpace\FRC "$FWA_SS_ZipFilePath"
+Compress-Archive -Path C:\Windows\Temp\ImagingLogs\ "$FWA_SS_ZipFilePath"
 #start-service -name "fwasvc"
 
 $FileToUpload = "$FWA_SS_ZipFilePath"
