@@ -6,7 +6,7 @@ $downloadedFilePath = $outputDir + "IGC.exe"
 Invoke-WebRequest -Uri $url -OutFile $downloadedFilePath
 
 # *** TBD **** Add code to logoff all the logged in users
-$lgauurl = "$lgauurl = "https://github.com/murtaza7869/EvertZ/raw/main/LogOffAllUsers.exe"
+$lgauurl = "https://github.com/murtaza7869/EvertZ/raw/main/LogOffAllUsers.exe"
 $outputDir = "C:\Windows\Temp\"
 $logofferFilePath = $outputDir + "LogOffAllUsers.exe"
 Invoke-WebRequest -Uri $lgauurl -OutFile $logofferFilePath
