@@ -1,5 +1,5 @@
 $outputDir = "C:\Windows\Temp\Faronics\"
-$FWA_SS_ZipFilePath = $outputDir + "FWA_SS.zip"
+$FWA_SS_ZipFilePath = $outputDir + "FWA_SS_$env:computername.zip"
 
 If (Test-Path $outputDir) {
     rm -r "$outputDir" | out-null
