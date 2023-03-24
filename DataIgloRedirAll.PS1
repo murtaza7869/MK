@@ -1,12 +1,12 @@
 # Please specify the Destination Folder for the new redirected user profiles in the command line
 #Download the IGC tool
-$url = "https://dev.deepfreeze.com/Download/IGC.exe"
+$url = "https://github.com/murtaza7869/EvertZ/raw/main/IGC.exe"
 $outputDir = "C:\Windows\Temp\"
 $downloadedFilePath = $outputDir + "IGC.exe"
 Invoke-WebRequest -Uri $url -OutFile $downloadedFilePath
 
 # *** TBD **** Add code to logoff all the logged in users
-$lgauurl = "https://dev.deepfreeze.com/Download/LogOffAllUsers.exe"
+$lgauurl = "$lgauurl = "https://github.com/murtaza7869/EvertZ/raw/main/IGC.exe/LogOffAllUsers.exe"
 $outputDir = "C:\Windows\Temp\"
 $logofferFilePath = $outputDir + "LogOffAllUsers.exe"
 Invoke-WebRequest -Uri $lgauurl -OutFile $logofferFilePath
