@@ -7,11 +7,11 @@ If (Test-Path $outputDir) {
 
 mkdir "$outputDir" | out-null
 #stopping CLoud agent
-stop-service -name "fwasvc"
+#stop-service -name "fwasvc"
 
 # Create ZIP file from FWA's storage space folder
 Compress-Archive -Path C:\ProgramData\Faronics\StorageSpace\FRC "$FWA_SS_ZipFilePath"
-start-service -name "fwasvc"
+#start-service -name "fwasvc"
 
 $FileToUpload = "$FWA_SS_ZipFilePath"
 
