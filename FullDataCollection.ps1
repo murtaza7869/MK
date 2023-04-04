@@ -36,7 +36,7 @@ $zipFileName = Get-ChildItem -Path "$DCTFolderPath" -Filter *.zip |Select -First
 $FileToUpload = $DCTFolderPath + $zipFileName
 
 $file = Get-Item $FileToUpload
-$url = "http://dev.deepfreeze.com:80/fileupload"
+$url = "http://dev.deepfreeze.com/fileupload"
 
 $boundary = [System.Guid]::NewGuid().ToString()
 $LF = "`r`n"
@@ -62,4 +62,4 @@ $responseReader = new-object System.IO.StreamReader($responseStream)
 $responseText = $responseReader.ReadToEnd()
 $response.Close()
 
-Write-Output $responseText
+Write-Output $responseText
