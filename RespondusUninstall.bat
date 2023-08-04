@@ -1,7 +1,8 @@
 CD /D C:\Users\student\Downloads
 MD ldb2setup_2-0-8
 NET USE L: "\\student-server\deepfreeze\ldb2setup_2-0-8" pima /user:localhost\student /persistent:no
-XCOPY L:\*.* C:\Users\student\Downloads\ldb2setup_2-0-8 /E /Y
+XCOPY L:\*.* "C:\Users\student\Downloads\ldb2setup_2-0-8" /E /Y
+ping locahost -n 10
 NET USE L: /delete /y
 
 CD /D C:\Users\student\Downloads\ldb2setup_2-0-8
