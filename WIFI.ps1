@@ -1,7 +1,7 @@
 # Define Wi-Fi profile parameters
-$ProfileName = "MK"
-$SSID = "YourWiFiSSID"
-$Password = "YourWiFiPassword"
+$ProfileName = "MK Home"
+$SSID = "TELUS9219"
+$Password = "wfacJb8eYxnS"
 
 # Create Wi-Fi profile XML
 $XmlTemplate = @"
