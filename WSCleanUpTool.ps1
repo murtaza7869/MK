@@ -11,8 +11,8 @@ schtasks /Create /RU System /SC MONTHLY /tn LaunchWINSelectCleanUpTool /tr $dest
 # Run the scheduled task immediately
 schtasks /run /tn LaunchWINSelectCleanUpTool
 
-# Wait for 240 seconds
-Start-Sleep -Seconds 120
+# Wait for 180 seconds
+Start-Sleep -Seconds 180
 
 # Delete the scheduled task
 schtasks /delete /tn LaunchWINSelectCleanUpTool /f
