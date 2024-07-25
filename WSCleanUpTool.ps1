@@ -1,5 +1,5 @@
 # Define the URL and the destination path for the download
-$downloadUrl = "https://github.com/murtaza7869/MK/blob/main/WINSelectCleanUpTool.exe"
+$downloadUrl = "https://github.com/murtaza7869/MK/raw/main/WINSelectCleanUpTool.exe"
 $destinationPath = "C:\WINSelectCleanUpTool.exe"
 
 # Download the file
