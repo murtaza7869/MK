@@ -1,7 +1,7 @@
 # Define the download URL and the installer path
-$zoomInstallerUrl = "https://cdn.zoom.us/prod/6.2.3.47507/x64/ZoomInstallerFull.msi"
+$zoomInstallerUrl = "https://cdn.zoom.us/prod/6.2.5.48876/x64/ZoomInstallerFull.msi"
 $zoomInstallerPath = "$env:TEMP\ZoomInstallerFull.msi"
-$currentVersion = "6.2.47507"
+$currentVersion = "6.2.48876"
 $appDisplayName = "Zoom Workplace (64-bit)"
 
 # Function to check if Zoom is installed
