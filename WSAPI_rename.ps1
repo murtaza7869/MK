@@ -25,6 +25,6 @@ foreach ($file in $files) {
     }
 }
 
-# Initiate a restart
+# Schedule a restart in 1 minute
 Write-Host "Restarting the machine in 1 minute..."
-Restart-Computer -Force -Delay 60
+shutdown /r /t 60
