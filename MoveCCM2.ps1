@@ -1,4 +1,4 @@
-# PowerShell Script to move C:\Windows\CCM to T:\CCM and create a junction link
+# PowerShell Script to move C:\Windows\CCM to E:\SCCM_data and create a junction link
 # This script must be run as Administrator
 
 # Check if running as Administrator
@@ -9,11 +9,11 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Define source and destination paths
 $sourcePath = "C:\Windows\CCM"
-$destinationPath = "T:\CCM"
+$destinationPath = "E:\SCCM_data"
 
 # Ensure the destination drive exists
-if (-NOT (Test-Path "T:\" -PathType Container)) {
-    Write-Error "The T: drive does not exist. Please ensure the drive is connected and try again."
+if (-NOT (Test-Path "E:\" -PathType Container)) {
+    Write-Error "The E: drive does not exist. Please ensure the drive is connected and try again."
     exit
 }
 
@@ -136,7 +136,7 @@ try {
         Write-Host "Temporary folder removed." -ForegroundColor Green
     }
 } catch {
-    Write-Warning "Failed to remove temporary folder $tempPath: $_"
+    Write-Warning "Failed to remove temporary folder $tempPath`: $($_.ToString())"
     Write-Host "You may want to manually remove this folder later." -ForegroundColor Yellow
 }
 
