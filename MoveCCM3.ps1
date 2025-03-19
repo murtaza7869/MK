@@ -9,11 +9,11 @@ if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 
 # Define source and destination paths
 $sourcePath = "C:\Windows\CCM"
-$destinationPath = "T:\CCM"
+$destinationPath = "E:\sccm_data"
 
 # Ensure the destination drive exists
-if (-NOT (Test-Path "T:\" -PathType Container)) {
-    Write-Error "The T: drive does not exist. Please ensure the drive is connected and try again."
+if (-NOT (Test-Path "E:\" -PathType Container)) {
+    Write-Error "The E: drive does not exist. Please ensure the drive is connected and try again."
     exit
 }
 
