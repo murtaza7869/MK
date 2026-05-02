@@ -1,56 +1,22 @@
+#Requires -Version 5.1
 <#
 .SYNOPSIS
-    Locates a software application by display name in the Windows registry
-    and performs a silent, unattended uninstall.
-
-.DESCRIPTION
-    Searches all standard Uninstall hives:
-      - HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall          (64-bit)
-      - HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall (32-bit on 64-bit OS)
-      - HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall          (per-user installs)
-
-    String priority (first found wins):
-      1. QuietUninstallString   — used as-is, already silent
-      2. SilentUninstallString  — used as-is, already silent
-      3. UninstallString        — augmented with silent flags based on auto-detected
-                                  installer type (MSI, NSIS, Inno Setup, InstallShield, etc.)
-
-    Designed for unattended RMM execution under SYSTEM or admin context.
-    No reboot is forced.
-
+    Finds an installed application by display name and silently uninstalls it.
 .PARAMETER AppName
-    Display name as shown in Add/Remove Programs. Supports wildcards (*).
-    Case-insensitive. E.g. "Google Chrome", "Microsoft Visual C++*", "7-Zip*"
-
+    Name as shown in Add/Remove Programs. Wildcards (*) supported.
 .PARAMETER ExactMatch
-    Require an exact display name match (still case-insensitive).
-    Default: $false
-
+    Require an exact (case-insensitive) name match.
 .PARAMETER UninstallAll
-    When multiple matches are found, uninstall ALL of them.
-    When $false (default), the script exits if more than one match is found
-    (you must narrow down the name or use a wildcard with -UninstallAll).
-    Default: $false
-
+    If multiple matches found, uninstall all of them.
 .PARAMETER WaitForExit
-    Wait for the uninstall process to finish before exiting.
-    Default: $true
-
+    Wait for the uninstall process to complete. Default: $true
 .PARAMETER TimeoutMinutes
-    Maximum time to wait for the uninstall process. Default: 30 minutes.
-
+    Max wait time in minutes. Default: 30
 .PARAMETER LogPath
-    Full path to the log file.
-    Default: C:\Windows\Logs\SilentUninstall_<sanitised-AppName>.log
-
+    Log file path. Default: C:\Windows\Logs\SilentUninstall_<AppName>.log
 .EXAMPLE
-    # Exact name, wait for completion
     .\Invoke-SilentUninstall.ps1 -AppName "Google Chrome"
-
-    # Wildcard — removes ALL matching VC++ redists
-    .\Invoke-SilentUninstall.ps1 -AppName "Microsoft Visual C++ 2015*" -UninstallAll
-
-    # Fire-and-forget (RMM task sequence style)
+    .\Invoke-SilentUninstall.ps1 -AppName "Microsoft Visual C++*" -UninstallAll
     .\Invoke-SilentUninstall.ps1 -AppName "Zoom" -WaitForExit $false
 #>
 
@@ -58,416 +24,373 @@
 param (
     [Parameter(Mandatory = $true)]
     [string]$AppName,
-
     [switch]$ExactMatch,
-
     [switch]$UninstallAll,
-
     [bool]$WaitForExit = $true,
-
     [int]$TimeoutMinutes = 30,
-
     [string]$LogPath = ""
 )
 
-Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-#region ── Logging ─────────────────────────────────────────────────────────────
+# ==============================================================================
+# LOGGING
+# ==============================================================================
 
 if (-not $LogPath) {
     $safeName = $AppName -replace '[\\/:*?"<>|]', '_'
     $LogPath  = "C:\Windows\Logs\SilentUninstall_$safeName.log"
 }
 
+$logDir = Split-Path $LogPath -Parent
+if (-not (Test-Path $logDir)) {
+    New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+}
+
 function Write-Log {
-    param (
+    param(
         [string]$Message,
-        [ValidateSet("INFO","WARN","ERROR")]
         [string]$Level = "INFO"
     )
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $line = "[$timestamp][$Level] $Message"
+    $ts   = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $line = "[$ts][$Level] $Message"
     Write-Host $line
     Add-Content -Path $LogPath -Value $line -Encoding UTF8
 }
 
-# Ensure log directory exists
-$logDir = Split-Path $LogPath -Parent
-if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir -Force | Out-Null }
-
 Write-Log "======================================================"
-Write-Log "Invoke-SilentUninstall started"
-Write-Log "AppName       : $AppName"
-Write-Log "ExactMatch    : $($ExactMatch.IsPresent)"
-Write-Log "UninstallAll  : $($UninstallAll.IsPresent)"
-Write-Log "WaitForExit   : $WaitForExit"
-Write-Log "TimeoutMinutes: $TimeoutMinutes"
-Write-Log "LogPath       : $LogPath"
-Write-Log "Running As    : $([Security.Principal.WindowsIdentity]::GetCurrent().Name)"
+Write-Log "Script started  : $AppName"
+Write-Log "ExactMatch      : $($ExactMatch.IsPresent)"
+Write-Log "UninstallAll    : $($UninstallAll.IsPresent)"
+Write-Log "WaitForExit     : $WaitForExit"
+Write-Log "Running As      : $([Security.Principal.WindowsIdentity]::GetCurrent().Name)"
 Write-Log "======================================================"
 
-#endregion
+# ==============================================================================
+# REGISTRY SEARCH
+# ==============================================================================
 
-#region ── Registry Search ─────────────────────────────────────────────────────
+function Get-UninstallEntries {
+    param(
+        [string]$Filter,
+        [bool]$Exact
+    )
 
-$registryHives = @(
-    "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
-    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
-    "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
-)
+    $hives = @(
+        "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+    )
 
-function Get-RegistryUninstallEntries {
-    param ([string]$DisplayNameFilter, [bool]$Exact)
+    $results = New-Object System.Collections.Generic.List[PSObject]
 
-    $results = [System.Collections.Generic.List[PSObject]]::new()
-
-    foreach ($hive in $registryHives) {
+    foreach ($hive in $hives) {
         if (-not (Test-Path $hive)) { continue }
 
-        Get-ChildItem -Path $hive -ErrorAction SilentlyContinue | ForEach-Object {
+        $keys = Get-ChildItem -Path $hive -ErrorAction SilentlyContinue
+
+        foreach ($key in $keys) {
             try {
-                $props = Get-ItemProperty -Path $_.PSPath -ErrorAction SilentlyContinue
-            } catch { return }
+                $p = Get-ItemProperty -Path $key.PSPath -ErrorAction SilentlyContinue
+            } catch {
+                continue
+            }
 
-            if (-not $props.DisplayName) { return }
+            if (-not $p.DisplayName) { continue }
 
-            $isMatch = if ($Exact) {
-                $props.DisplayName -ieq $DisplayNameFilter
+            if ($Exact) {
+                $hit = ($p.DisplayName -ieq $Filter)
             } else {
-                $props.DisplayName -ilike $DisplayNameFilter
+                $hit = ($p.DisplayName -ilike $Filter)
             }
 
-            if ($isMatch) {
-                $results.Add([PSCustomObject]@{
-                    DisplayName           = $props.DisplayName
-                    DisplayVersion        = $props.DisplayVersion
-                    Publisher             = $props.Publisher
-                    UninstallString       = $props.UninstallString
-                    QuietUninstallString  = $props.QuietUninstallString
-                    SilentUninstallString = $props.SilentUninstallString
-                    RegistryKeyName       = $_.PSChildName
-                    RegistryHive          = $hive
-                    RegistryPath          = $_.PSPath
-                    SystemComponent       = $props.SystemComponent
-                    WindowsInstaller      = $props.WindowsInstaller
-                })
+            if (-not $hit) { continue }
+
+            $obj = [PSCustomObject]@{
+                DisplayName           = $p.DisplayName
+                DisplayVersion        = $p.DisplayVersion
+                Publisher             = $p.Publisher
+                UninstallString       = $p.UninstallString
+                QuietUninstallString  = $p.QuietUninstallString
+                SilentUninstallString = $p.SilentUninstallString
+                RegistryKeyName       = $key.PSChildName
+                WindowsInstaller      = $p.WindowsInstaller
             }
+            $results.Add($obj)
         }
     }
+
     return $results
 }
 
-# Normalise the filter — if no wildcard present, wrap with * for partial matching
-$nameFilter = if ($ExactMatch) {
-    $AppName
+if ($ExactMatch) {
+    $nameFilter = $AppName
 } elseif ($AppName -notmatch '\*') {
-    "*$AppName*"
+    $nameFilter = "*$AppName*"
 } else {
-    $AppName
+    $nameFilter = $AppName
 }
 
-Write-Log "Searching registry with filter: '$nameFilter'"
+Write-Log "Registry filter : '$nameFilter'"
 
-$matches = Get-RegistryUninstallEntries -DisplayNameFilter $nameFilter -Exact $ExactMatch.IsPresent
+$foundApps = Get-UninstallEntries -Filter $nameFilter -Exact $ExactMatch.IsPresent
 
-if ($matches.Count -eq 0) {
-    Write-Log "No application found matching '$nameFilter'. Exiting." -Level "WARN"
+if ($foundApps.Count -eq 0) {
+    Write-Log "No application found matching '$nameFilter'. Exiting." "WARN"
     Exit 0
 }
 
-Write-Log "Found $($matches.Count) match(es):"
-$matches | ForEach-Object { Write-Log "  - '$($_.DisplayName)' v$($_.DisplayVersion) [$($_.Publisher)]" }
+Write-Log "Found $($foundApps.Count) match(es):"
+foreach ($a in $foundApps) {
+    Write-Log "  -> '$($a.DisplayName)' v$($a.DisplayVersion) [$($a.Publisher)]"
+}
 
-if ($matches.Count -gt 1 -and -not $UninstallAll) {
-    Write-Log "Multiple matches found and -UninstallAll was not specified." -Level "WARN"
-    Write-Log "Re-run with a more specific name or add -UninstallAll to remove all matches." -Level "WARN"
-    Write-Log "Matched names:"
-    $matches | ForEach-Object { Write-Log "  '$($_.DisplayName)'" -Level "WARN" }
+if (($foundApps.Count -gt 1) -and (-not $UninstallAll)) {
+    Write-Log "Multiple matches found but -UninstallAll not specified. Exiting." "WARN"
+    Write-Log "Use -UninstallAll to remove all, or provide a more specific name." "WARN"
     Exit 2
 }
 
-#endregion
+# ==============================================================================
+# COMMAND LINE PARSER
+# ==============================================================================
 
-#region ── Installer Type Detection ────────────────────────────────────────────
+function Parse-CommandLine {
+    param([string]$Raw)
+
+    $Raw = $Raw.Trim()
+
+    if ($Raw -match '^"([^"]+)"\s*(.*)$') {
+        return @{ Exe = $Matches[1].Trim(); Args = $Matches[2].Trim() }
+    }
+
+    if ($Raw -match '^(\S+)\s*(.*)$') {
+        return @{ Exe = $Matches[1].Trim(); Args = $Matches[2].Trim() }
+    }
+
+    throw "Cannot parse uninstall string: $Raw"
+}
+
+# ==============================================================================
+# INSTALLER TYPE DETECTION
+# ==============================================================================
 
 function Get-InstallerType {
-    <#
-    Detection order:
-      1. Registry key suffix _is1  → Inno Setup
-      2. WindowsInstaller = 1      → MSI (WI)
-      3. UninstallString contains msiexec → MSI
-      4. File version info of the uninstaller EXE
-      5. Unknown
-    #>
-    param (
+    param(
         [PSObject]$Entry,
         [string]$ExePath
     )
 
-    # Inno Setup keys always end in _is1
+    # Inno Setup registry keys always end in _is1
     if ($Entry.RegistryKeyName -match '_is1$') {
         return "InnoSetup"
     }
 
-    # Windows Installer flag in registry
+    # MSI - Windows Installer flag set in registry
     if ($Entry.WindowsInstaller -eq 1) {
         return "MSI"
     }
 
-    # msiexec in string
+    # MSI - msiexec present in uninstall string
     if ($Entry.UninstallString -imatch 'msiexec') {
         return "MSI"
     }
 
-    # Inspect the EXE file version info
+    # Inspect EXE file version info
     if ($ExePath -and (Test-Path $ExePath)) {
         try {
-            $vi      = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($ExePath)
-            $vString = "$($vi.FileDescription)|$($vi.ProductName)|$($vi.CompanyName)|$($vi.Comments)".ToLower()
+            $vi = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($ExePath)
+            $vs = "$($vi.FileDescription)|$($vi.ProductName)|$($vi.CompanyName)|$($vi.Comments)".ToLower()
 
-            if ($vString -match 'nullsoft|nsis')              { return "NSIS" }
-            if ($vString -match 'inno setup|innosetup')       { return "InnoSetup" }
-            if ($vString -match 'installshield')               { return "InstallShield" }
-            if ($vString -match '\bwise\b')                    { return "Wise" }
-            if ($vString -match 'squirrel')                    { return "Squirrel" }
-            if ($vString -match 'advanced installer')          { return "AdvancedInstaller" }
-            if ($vString -match 'wix|windows installer xml')  { return "MSI" }
+            if ($vs -match 'nullsoft|nsis')             { return "NSIS" }
+            if ($vs -match 'inno setup|innosetup')      { return "InnoSetup" }
+            if ($vs -match 'installshield')              { return "InstallShield" }
+            if ($vs -match '\bwise\b')                   { return "Wise" }
+            if ($vs -match 'squirrel')                   { return "Squirrel" }
+            if ($vs -match 'advanced installer')         { return "AdvancedInstaller" }
+            if ($vs -match 'wix|windows installer xml') { return "MSI" }
         } catch {
-            # file version read failed — continue to Unknown
+            # Cannot read version info - fall through to Unknown
         }
     }
 
     return "Unknown"
 }
 
+# ==============================================================================
+# SILENT FLAG INJECTION
+# ==============================================================================
+
 function Add-SilentFlags {
-    <#
-    Given an installer type and an existing uninstall command string,
-    returns the executable and argument list that should produce a silent uninstall.
-    #>
-    param (
+    param(
         [string]$InstallerType,
-        [string]$Executable,
         [string]$Arguments
     )
 
-    switch ($InstallerType) {
-
-        "MSI" {
-            # Normalise: /I (install) → /X (uninstall), add /qn /norestart
-            $Arguments = $Arguments -ireplace '/I\{', '/X{'
-            $Arguments = $Arguments -ireplace '/I "\{', '/X "{'
-            if ($Arguments -notmatch '/qn|/quiet')     { $Arguments += " /qn" }
-            if ($Arguments -notmatch '/norestart')      { $Arguments += " /norestart" }
-            # Ensure REBOOT=ReallySuppress for good measure on some MSIs
-            if ($Arguments -notmatch 'REBOOT')          { $Arguments += " REBOOT=ReallySuppress" }
+    if ($InstallerType -eq "MSI") {
+        $Arguments = $Arguments -ireplace '/I\s*\{', '/X {'
+        $Arguments = $Arguments -ireplace '/I\s*"',  '/X "'
+        if ($Arguments -notmatch '/qn|/quiet')  { $Arguments = "$Arguments /qn" }
+        if ($Arguments -notmatch '/norestart')  { $Arguments = "$Arguments /norestart" }
+        if ($Arguments -notmatch 'REBOOT')      { $Arguments = "$Arguments REBOOT=ReallySuppress" }
+    }
+    elseif ($InstallerType -eq "NSIS") {
+        # /S is case-sensitive in NSIS - must be uppercase
+        if ($Arguments -cnotmatch '/S') {
+            $Arguments = "/S $Arguments"
         }
-
-        "NSIS" {
-            # /S is CASE-SENSITIVE in NSIS — must be uppercase
-            if ($Arguments -cnotmatch '/S') { $Arguments = "/S $Arguments" }
+    }
+    elseif ($InstallerType -eq "InnoSetup") {
+        if ($Arguments -notmatch '/VERYSILENT')       { $Arguments = "$Arguments /VERYSILENT" }
+        if ($Arguments -notmatch '/SUPPRESSMSGBOXES') { $Arguments = "$Arguments /SUPPRESSMSGBOXES" }
+        if ($Arguments -notmatch '/NORESTART')        { $Arguments = "$Arguments /NORESTART" }
+        if ($Arguments -notmatch '/SP-')              { $Arguments = "$Arguments /SP-" }
+    }
+    elseif ($InstallerType -eq "InstallShield") {
+        if ($Arguments -notmatch '(^|\s)/s(\s|$)') { $Arguments = "/s $Arguments" }
+        if ($Arguments -notmatch '/sms')            { $Arguments = "$Arguments /sms" }
+    }
+    elseif ($InstallerType -eq "Wise") {
+        if ($Arguments -cnotmatch '/S') {
+            $Arguments = "/S $Arguments"
         }
-
-        "InnoSetup" {
-            # /VERYSILENT suppresses all dialogs; /NORESTART prevents reboot
-            $flags = @()
-            if ($Arguments -notmatch '/VERYSILENT')       { $flags += "/VERYSILENT" }
-            if ($Arguments -notmatch '/SUPPRESSMSGBOXES') { $flags += "/SUPPRESSMSGBOXES" }
-            if ($Arguments -notmatch '/NORESTART')        { $flags += "/NORESTART" }
-            if ($Arguments -notmatch '/SP-')              { $flags += "/SP-" }
-            if ($flags) { $Arguments = "$Arguments $($flags -join ' ')" }
-        }
-
-        "InstallShield" {
-            # /s = silent, /sms = synchronous (waits for completion)
-            # Works for both InstallScript and Basic MSI EXE wrappers
-            if ($Arguments -notmatch '\s/s(\s|$)') { $Arguments = "/s $Arguments" }
-            if ($Arguments -notmatch '/sms')        { $Arguments += " /sms" }
-        }
-
-        "Wise" {
-            if ($Arguments -cnotmatch '/S') { $Arguments = "/S $Arguments" }
-        }
-
-        "Squirrel" {
-            # Squirrel-based apps (Slack, Teams classic, etc.)
-            # UninstallString is usually: Update.exe --uninstall
-            if ($Arguments -notmatch '--uninstall') { $Arguments += " --uninstall" }
-            if ($Arguments -notmatch '--silent')    { $Arguments += " --silent" }
-        }
-
-        "AdvancedInstaller" {
-            if ($Arguments -notmatch '/exenoui') { $Arguments += " /exenoui" }
-            if ($Arguments -notmatch '/qn')      { $Arguments += " /qn" }
-            if ($Arguments -notmatch '/norestart') { $Arguments += " /norestart" }
-        }
-
-        "Unknown" {
-            # Best-effort: many EXE uninstallers respond to at least one of these
-            # We log a warning but run as-is; QuietUninstallString path avoids this entirely
-            Write-Log "Installer type unknown — running UninstallString as-is. Silent uninstall is not guaranteed." -Level "WARN"
-        }
+    }
+    elseif ($InstallerType -eq "Squirrel") {
+        if ($Arguments -notmatch '--uninstall') { $Arguments = "$Arguments --uninstall" }
+        if ($Arguments -notmatch '--silent')    { $Arguments = "$Arguments --silent" }
+    }
+    elseif ($InstallerType -eq "AdvancedInstaller") {
+        if ($Arguments -notmatch '/exenoui')   { $Arguments = "$Arguments /exenoui" }
+        if ($Arguments -notmatch '/qn')        { $Arguments = "$Arguments /qn" }
+        if ($Arguments -notmatch '/norestart') { $Arguments = "$Arguments /norestart" }
+    }
+    else {
+        Write-Log "Installer type Unknown - using UninstallString as-is. Silent not guaranteed." "WARN"
     }
 
     return $Arguments.Trim()
 }
 
-#endregion
-
-#region ── Command Parser ───────────────────────────────────────────────────────
-
-function Parse-CommandLine {
-    param ([string]$CommandLine)
-
-    $CommandLine = $CommandLine.Trim()
-
-    if ($CommandLine -match '^"([^"]+)"\s*(.*)$') {
-        return @{ Executable = $Matches[1].Trim(); Arguments = $Matches[2].Trim() }
-    }
-    elseif ($CommandLine -match '^(\S+)\s*(.*)$') {
-        return @{ Executable = $Matches[1].Trim(); Arguments = $Matches[2].Trim() }
-    }
-    else {
-        throw "Unable to parse command line: $CommandLine"
-    }
-}
-
-#endregion
-
-#region ── Uninstall Executor ───────────────────────────────────────────────────
+# ==============================================================================
+# UNINSTALL EXECUTOR
+# ==============================================================================
 
 function Invoke-Uninstall {
-    param (
-        [PSObject]$Entry
-    )
+    param([PSObject]$Entry)
 
     Write-Log "------------------------------------------------------"
-    Write-Log "Processing: '$($Entry.DisplayName)' v$($Entry.DisplayVersion)"
+    Write-Log "Processing : '$($Entry.DisplayName)' v$($Entry.DisplayVersion)"
 
-    # ── Select the best uninstall string ──────────────────────────────────────
-    $selectedString = $null
-    $stringSource   = ""
+    # Pick best available uninstall string
+    $rawString  = $null
+    $fromSource = ""
 
     if ($Entry.QuietUninstallString) {
-        $selectedString = $Entry.QuietUninstallString
-        $stringSource   = "QuietUninstallString"
-    }
-    elseif ($Entry.SilentUninstallString) {
-        $selectedString = $Entry.SilentUninstallString
-        $stringSource   = "SilentUninstallString"
-    }
-    elseif ($Entry.UninstallString) {
-        $selectedString = $Entry.UninstallString
-        $stringSource   = "UninstallString (will augment with silent flags)"
-    }
-    else {
-        Write-Log "No uninstall string found for '$($Entry.DisplayName)'. Skipping." -Level "ERROR"
+        $rawString  = $Entry.QuietUninstallString
+        $fromSource = "QuietUninstallString"
+    } elseif ($Entry.SilentUninstallString) {
+        $rawString  = $Entry.SilentUninstallString
+        $fromSource = "SilentUninstallString"
+    } elseif ($Entry.UninstallString) {
+        $rawString  = $Entry.UninstallString
+        $fromSource = "UninstallString"
+    } else {
+        Write-Log "No uninstall string found. Skipping." "ERROR"
         return 1
     }
 
-    Write-Log "String source : $stringSource"
-    Write-Log "Raw string    : $selectedString"
+    Write-Log "Source : $fromSource"
+    Write-Log "Raw    : $rawString"
 
-    # ── Parse into executable + arguments ─────────────────────────────────────
+    # Parse into executable + arguments
     try {
-        $parsed = Parse-CommandLine -CommandLine $selectedString
-    }
-    catch {
-        Write-Log "Failed to parse command line: $_" -Level "ERROR"
+        $parsed = Parse-CommandLine -Raw $rawString
+    } catch {
+        Write-Log "Parse failed: $_" "ERROR"
         return 1
     }
 
-    $exe  = $parsed.Executable
-    $args = $parsed.Arguments
+    $exe  = $parsed.Exe
+    $args = $parsed.Args
 
-    # ── If using plain UninstallString, detect type and augment flags ──────────
-    if ($stringSource -eq "UninstallString (will augment with silent flags)") {
-        $installerType = Get-InstallerType -Entry $Entry -ExePath $exe
-        Write-Log "Detected installer type: $installerType"
-        $args = Add-SilentFlags -InstallerType $installerType -Executable $exe -Arguments $args
+    # Only augment plain UninstallString - Quiet/Silent variants are already baked
+    if ($fromSource -eq "UninstallString") {
+        $type = Get-InstallerType -Entry $Entry -ExePath $exe
+        Write-Log "Installer type : $type"
+        $args = Add-SilentFlags -InstallerType $type -Arguments $args
     }
 
-    Write-Log "Executable    : $exe"
-    Write-Log "Arguments     : $args"
+    Write-Log "Exe  : $exe"
+    Write-Log "Args : $args"
 
-    # ── msiexec special handling: call directly, not via Start-Process filepath ─
-    $isMsi = ($exe -imatch 'msiexec')
-
-    # ── Execute ───────────────────────────────────────────────────────────────
+    # Execute
     try {
+        $isMsi = ($exe -imatch 'msiexec')
+
         if ($isMsi) {
-            # msiexec arguments include everything; safest to call cmd /c
-            Write-Log "Invoking MSI uninstall via msiexec..."
-            $procArgs = $args
-            $process  = Start-Process -FilePath "msiexec.exe" `
-                                      -ArgumentList $procArgs `
-                                      -Wait:$WaitForExit `
-                                      -PassThru `
-                                      -ErrorAction Stop
-        }
-        else {
+            Write-Log "Launching via msiexec..."
             if ($args) {
-                $process = Start-Process -FilePath $exe `
-                                         -ArgumentList $args `
-                                         -Wait:$WaitForExit `
-                                         -PassThru `
-                                         -ErrorAction Stop
+                $proc = Start-Process -FilePath "msiexec.exe" -ArgumentList $args -PassThru -ErrorAction Stop
+            } else {
+                $proc = Start-Process -FilePath "msiexec.exe" -PassThru -ErrorAction Stop
             }
-            else {
-                $process = Start-Process -FilePath $exe `
-                                         -Wait:$WaitForExit `
-                                         -PassThru `
-                                         -ErrorAction Stop
+        } else {
+            Write-Log "Launching EXE uninstaller..."
+            if ($args) {
+                $proc = Start-Process -FilePath $exe -ArgumentList $args -PassThru -ErrorAction Stop
+            } else {
+                $proc = Start-Process -FilePath $exe -PassThru -ErrorAction Stop
             }
         }
 
         if ($WaitForExit) {
-            # If -Wait was used, WaitForExit already happened inside Start-Process
-            $exitCode = $process.ExitCode
-            Write-Log "Uninstall completed. Exit code: $exitCode"
+            Write-Log "Waiting for process (PID $($proc.Id)) - timeout $TimeoutMinutes min..."
+            $finished = $proc.WaitForExit($TimeoutMinutes * 60 * 1000)
 
-            # Common success codes
-            $successCodes = @(0, 3010, 1605, 1614)   # 3010 = reboot required (soft), 1605/1614 = product not found (already gone)
-            if ($exitCode -in $successCodes) {
-                Write-Log "Exit code $exitCode is considered successful." 
-            }
-            else {
-                Write-Log "Exit code $exitCode may indicate a problem. Check vendor documentation." -Level "WARN"
+            if (-not $finished) {
+                Write-Log "Process did not finish within $TimeoutMinutes minutes." "WARN"
+                return 1
             }
 
-            return $exitCode
-        }
-        else {
-            Write-Log "Uninstall process launched (PID: $($process.Id)). Not waiting for completion as per -WaitForExit:`$false."
+            $code         = $proc.ExitCode
+            $successCodes = @(0, 3010, 1605, 1614)
+
+            Write-Log "Exit code : $code"
+
+            if ($code -in $successCodes) {
+                Write-Log "Exit code $code - success."
+            } else {
+                Write-Log "Exit code $code - may indicate a problem. Check vendor documentation." "WARN"
+            }
+
+            return $code
+        } else {
+            Write-Log "Process launched (PID $($proc.Id)). Not waiting (-WaitForExit:`$false)."
             return 0
         }
-    }
-    catch {
-        Write-Log "Exception during uninstall: $_" -Level "ERROR"
+    } catch {
+        Write-Log "Execution error: $_" "ERROR"
         return 1
     }
 }
 
-#endregion
+# ==============================================================================
+# MAIN
+# ==============================================================================
 
-#region ── Main Loop ───────────────────────────────────────────────────────────
+$overallExit  = 0
+$successCodes = @(0, 3010, 1605, 1614)
 
-$overallExitCode = 0
-
-foreach ($app in $matches) {
-    $result = Invoke-Uninstall -Entry $app
-
-    if ($result -notin @(0, 3010, 1605, 1614)) {
-        $overallExitCode = $result
-        Write-Log "Uninstall of '$($app.DisplayName)' returned non-success code: $result" -Level "WARN"
+foreach ($app in $foundApps) {
+    $rc = Invoke-Uninstall -Entry $app
+    if ($rc -notin $successCodes) {
+        $overallExit = $rc
+        Write-Log "'$($app.DisplayName)' returned non-success code: $rc" "WARN"
     }
 }
 
 Write-Log "======================================================"
-Write-Log "Invoke-SilentUninstall finished. Overall exit code: $overallExitCode"
+Write-Log "Finished. Overall exit code: $overallExit"
 Write-Log "======================================================"
 
-Exit $overallExitCode
-
-#endregion
+Exit $overallExit
