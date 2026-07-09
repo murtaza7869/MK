@@ -64,10 +64,10 @@ powercfg -setactive $newGuid
 
 # ---- 5. Enable Fast Startup ----
 # Fast startup requires hibernation to be enabled under the hood
-powercfg /hibernate on
+#powercfg /hibernate on
 
-$powerRegPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power"
-Set-ItemProperty -Path $powerRegPath -Name "HiberbootEnabled" -Value 1 -Type DWord -Force
+#$powerRegPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power"
+#Set-ItemProperty -Path $powerRegPath -Name "HiberbootEnabled" -Value 1 -Type DWord -Force
 
 # ---- 6. Hide Sleep, Hibernate, and Lock from the power/account menu ----
 $flyoutPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FlyoutMenuSettings"
