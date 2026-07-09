@@ -33,7 +33,6 @@ $foldersToClean = @(
     "Pictures",
     "Videos",
     "Music",
-    "Desktop",
     "Favorites",
     "AppData\Local\Temp",
     "AppData\Roaming\Microsoft\Windows\Recent",
